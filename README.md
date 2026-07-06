@@ -1,8 +1,7 @@
-
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QR Studio • Ultimate Edition</title>
     
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -27,7 +26,7 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: var(--font-family); }
-        body { background: var(--bg-main); color: var(--text-main); transition: var(--transition); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg-main); color: var(--text-main); transition: var(--transition); overflow-x: hidden; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -47,7 +46,8 @@
         .menu-item:hover { background: var(--secondary-bg); color: var(--accent); }
 
         /* ================= TABS ================= */
-        .container { max-width: 1100px; margin: 0 auto; padding: 20px; animation: slideUp 0.4s ease; }
+        /* Changed max-width to 600px to enforce phone app look even on large screens */
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; animation: slideUp 0.4s ease; }
         .tabs-wrapper { display: flex; background: var(--secondary-bg); padding: 6px; border-radius: 20px; margin-bottom: 25px; }
         .tab-btn { flex: 1; padding: 14px; border-radius: 14px; border: none; background: transparent; font-weight: 700; font-size: 1rem; color: var(--gray-text); cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
         .tab-btn.active { background: var(--bg-card); color: var(--text-main); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
@@ -167,11 +167,12 @@
         <div id="tab-generate" class="tab-panel active">
             <div class="layout-grid">
                 
-                <div class="card">
+                <div class="card full-col">
                     <div class="card-title"><i class="fas fa-layer-group"></i> <span data-i18n="contentType">Content Type</span></div>
                     <div class="type-grid" id="typeGrid">
                         <div class="type-btn active" data-type="url"><i class="fas fa-link"></i> URL</div>
                         <div class="type-btn" data-type="text"><i class="fas fa-font"></i> Text</div>
+                        <div class="type-btn" data-type="image"><i class="fas fa-image"></i> Image</div>
                         <div class="type-btn" data-type="payment"><i class="fas fa-rupee-sign"></i> Payment</div>
                         <div class="type-btn" data-type="location"><i class="fas fa-map-marker-alt"></i> Location</div>
                         <div class="type-btn" data-type="wifi"><i class="fas fa-wifi"></i> WiFi</div>
@@ -186,7 +187,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card full-col">
                     <div class="card-title"><i class="fas fa-palette"></i> <span data-i18n="designSys">Design System</span></div>
                     <div class="style-label"><span><span data-i18n="gradTitle">Colors & Gradients</span></span><button class="show-more-btn" onclick="toggleExpand('gradientGrid', this)">Show All</button></div>
                     <div class="grid-expandable" id="gradientGrid"></div>
@@ -342,6 +343,14 @@
     const inputTemplates = {
         url: `<div class="form-group"><label>Website URL</label><input type="url" class="form-control" id="inp_url" value="https://google.com"></div>`,
         text: `<div class="form-group"><label>Enter Text</label><textarea class="form-control" id="inp_text" rows="3">Hello World</textarea></div>`,
+        image: `
+            <div class="form-group">
+                <label>Upload Image (Max 10MB)</label>
+                <input type="file" class="form-control" id="inp_img_file" accept="image/*">
+            </div>
+            <div id="img_upload_status" style="margin-top:10px; font-size:0.85rem; font-weight:bold; color:var(--accent);"></div>
+            <input type="hidden" id="inp_img_url" value="">
+        `,
         payment: `
             <div class="form-group"><label>UPI ID (e.g., prince@ybl)</label><input type="text" class="form-control" id="inp_pay_upi" placeholder="example@upi"></div>
             <div class="form-group"><label>Payee Name</label><input type="text" class="form-control" id="inp_pay_name" placeholder="Prince"></div>
@@ -361,7 +370,53 @@
         sms: `<div class="form-group"><label>Phone Number</label><input type="tel" class="form-control" id="inp_s_phone" placeholder="9876543210"></div>`
     };
 
-    function renderInputPanel() { document.getElementById('dynamicInputPanel').innerHTML = inputTemplates[currentType]; }
+    function renderInputPanel() { 
+        document.getElementById('dynamicInputPanel').innerHTML = inputTemplates[currentType]; 
+
+        // Cloudinary Image Upload Event Listener
+        if (currentType === 'image') {
+            document.getElementById('inp_img_file').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // Max 10MB Check
+                if (file.size > 10 * 1024 * 1024) {
+                    alert("File size exceeds the 10MB limit! Please choose a smaller image.");
+                    e.target.value = '';
+                    return;
+                }
+                
+                const statusEl = document.getElementById('img_upload_status');
+                statusEl.innerText = "Uploading to secure cloud... Please wait.";
+                statusEl.style.color = "var(--accent)";
+                
+                const formData = new FormData();
+                formData.append("file", file);
+                formData.append("upload_preset", "princexit_upload");
+                
+                try {
+                    const res = await fetch("https://api.cloudinary.com/v1_1/dl4pbclvi/image/upload", {
+                        method: "POST",
+                        body: formData
+                    });
+                    const data = await res.json();
+                    
+                    if (data.secure_url) {
+                        document.getElementById('inp_img_url').value = data.secure_url;
+                        statusEl.innerText = "Upload Successful! Generating QR Code...";
+                        statusEl.style.color = "var(--success)";
+                        generateQR(); 
+                    } else {
+                        statusEl.innerText = "Upload failed. Please try again.";
+                        statusEl.style.color = "var(--danger)";
+                    }
+                } catch(err) {
+                    statusEl.innerText = "Error uploading image to server.";
+                    statusEl.style.color = "var(--danger)";
+                }
+            });
+        }
+    }
 
     document.querySelectorAll('.type-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -375,6 +430,7 @@
         switch(currentType) {
             case 'url': return document.getElementById('inp_url').value || 'https://google.com';
             case 'text': return document.getElementById('inp_text').value || 'Text';
+            case 'image': return document.getElementById('inp_img_url').value || 'Please upload an image first to generate the QR.';
             case 'payment':
                 const u = document.getElementById('inp_pay_upi').value; const n = document.getElementById('inp_pay_name').value;
                 const a = document.getElementById('inp_pay_amt').value; const tn = document.getElementById('inp_pay_note').value;
@@ -487,7 +543,7 @@
             <div class="history-item" onclick="viewHistoryQR('${h.id}')">
                 <div>
                     <h4 style="color:var(--accent); margin-bottom:5px;">${h.name}</h4>
-                    <p style="font-size:0.8rem; color:var(--gray-text);"><i class="far fa-calendar-alt"></i> ${h.date}   <i class="far fa-clock"></i> ${h.time}</p>
+                    <p style="font-size:0.8rem; color:var(--gray-text);"><i class="far fa-calendar-alt"></i> ${h.date} &nbsp; <i class="far fa-clock"></i> ${h.time}</p>
                 </div>
                 <div style="font-size: 1.2rem; color: var(--gray-text);"><i class="fas fa-expand-arrows-alt"></i></div>
             </div>
@@ -537,11 +593,13 @@
         try {
             camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
             video.srcObject = camStream; video.play();
+            // Upgraded interval to 150ms for lightning fast detection
             camInterval = setInterval(() => {
                 if (video.readyState === video.HAVE_ENOUGH_DATA) {
                     const cvs = document.createElement("canvas"); cvs.width = video.videoWidth; cvs.height = video.videoHeight;
                     cvs.getContext("2d").drawImage(video, 0, 0);
-                    const code = jsQR(cvs.getContext("2d").getImageData(0,0,cvs.width,cvs.height).data, cvs.width, cvs.height, { inversionAttempts: "dontInvert" });
+                    // Upgraded inversionAttempts to "attemptBoth" for ultimate scanning power
+                    const code = jsQR(cvs.getContext("2d").getImageData(0,0,cvs.width,cvs.height).data, cvs.width, cvs.height, { inversionAttempts: "attemptBoth" });
                     
                     if (code) { 
                         stopFullscreenCamera(); 
@@ -553,7 +611,7 @@
                         }
                     }
                 }
-            }, 300);
+            }, 150);
         } catch (e) { alert("Camera access denied."); stopFullscreenCamera(); }
     }
 
@@ -662,7 +720,6 @@
     function copyResultData() { navigator.clipboard.writeText(currentRawData).then(() => alert("Raw Payload Copied!")); }
     function executeResultAction() { if(currentActionLink) window.location.href = currentActionLink; }
 
-    // ================= 1. FIX: 10-PAGE ABOUT SECTION =================
     function initAbout() {
         const pages = [
             { t: "1. Welcome to QR Studio", d: "The ultimate QR tool designed for professionals. Fast, secure, and fully offline." },
@@ -684,7 +741,6 @@
         `).join('');
     }
 
-    // ================= 2. FIX: 50 LANGUAGES & TRANSLATION =================
     const languagesFull = [
         {c:'en', n:"English"}, {c:'hi', n:"हिन्दी (Hindi)"}, {c:'es', n:"Español (Spanish)"}, {c:'fr', n:"Français (French)"}, {c:'zh', n:"中文 (Chinese)"}, 
         {c:'ar', n:"العربية (Arabic)"}, {c:'ru', n:"Русский (Russian)"}, {c:'pt', n:"Português"}, {c:'bn', n:"বাংলা (Bengali)"}, {c:'ur', n:"اردو (Urdu)"},
@@ -711,7 +767,7 @@
     }
 
     function setLang(code) {
-        const dict = i18n[code] || i18n['en']; // default to English if translation not explicitly in dictionary
+        const dict = i18n[code] || i18n['en']; 
         document.querySelectorAll('[data-i18n]').forEach(el => {
             const key = el.getAttribute('data-i18n'); 
             if(dict[key]) el.innerText = dict[key];
